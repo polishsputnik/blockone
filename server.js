@@ -69,7 +69,6 @@ async function load_block(block_num) {
     } finally {
         client.release()
     }
-    //console.log(res)
     return block_response
 }
 
@@ -80,6 +79,43 @@ async function start() {
 
 
 start()
+
+async function get_block(id) {
+
+    const client = await pool.connect()
+
+    block_query = "SELECT * FROM blocks WHERE id = '" + id + "';"
+    //console.log(insert_block_query)
+    let res
+    try {
+        await client.query('BEGIN')
+        try {
+            res = await client.query(block_query)
+            await client.query('COMMIT')
+        } catch (err) {
+            await client.query('ROLLBACK')
+            throw err
+        }
+    } finally {
+        client.release()
+    }
+
+    if (res.rows.length > 0) {
+        row = res.rows[0]
+        //console.log(row)
+        result = {
+            block_num: row.block_num,
+            timestamp: row.timestamp,
+            previous: row.previous,
+            transaction_mroot: row.transaction_mroot,
+            action_mroot: row.action_mroot,
+            block_mroot: row.block_mroot,
+            id: row.id,
+            ref_block_prefix: row.ref_block_prefix
+        }
+    }
+    return result
+}
 
 express_graphql = require('express-graphql');
 var { buildSchema } = require('graphql');
@@ -174,11 +210,45 @@ app.use('/graphql', express_graphql({
 }))
 app.listen(4000, () => console.log('Express GraphQL Server Now Running On localhost:4000/graphql'))
 
+app.set('view engine', 'ejs')
+const bodyParser = require('body-parser');
+app.use(bodyParser.urlencoded({ extended: true }));
 
-app.get('/', function (req, res) {
-    res.send('Hello World!')
+app.get('/', async function (req, res) {
+    block_num = await get_latest_block_num()
+    block = await load_block(block_num)
+    let id = await block.id
+    res.render('index', {id: id, block_num: block_num, error: null})
+})
+
+app.post('/', async function (req, res) {
+    if (req.body.block_num) {
+        let block_num = req.body.block_num
+        //console.log(block_num)
+        block = await load_block(block_num)
+        let id = await block.id
+        //console.log(id)
+        res.render('index', {id: id, block_num: block_num, error: null})
+    }
+    else if (req.body.id) {
+        let id = req.body.id
+        //console.log(block_num)
+        block = await get_block(id)
+
+        let block_num = await block.block_num
+        //console.log(id)
+        res.render('index', {id: id, block_num: block_num, error: null})
+    }
+    else {
+        block_num = await get_latest_block_num()
+        block = await load_block(block_num)
+        let id = await block.id
+        res.render('index', {id: id, block_num: block_num, error: null})
+    }
+
 })
 
 app.listen(3000, function () {
     console.log('Example app listening on port 3000!')
 })
+

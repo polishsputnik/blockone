@@ -8,6 +8,7 @@
     "start": "node server.js"
   },
   "dependencies": {
+    "body-parser": "^1.18.3",
     "ejs": "^2.6.1",
     "eosjs": "^16.0.6",
     "eosjs-api": "^7.0.3",
