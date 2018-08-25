@@ -1,0 +1,14 @@
+{
+  "name": "block_one",
+  "version": "1.0.0",
+  "description": "GraphQL representation of blocks",
+  "author": "Jenn McGuire <polishsputnik@gmail.com>",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.16.3",
+    "pg": "^7.4.3"
+  }
+}
