@@ -219,7 +219,7 @@ const bodyParser = require('body-parser');
 app.use(bodyParser.urlencoded({ extended: true }));
 
 
-async function start() {
+exports.start = async function () {
     const block_num = await get_latest_block_num()
     const block = await load_block_by_num(block_num)
     const result = {block_num: block_num,
@@ -228,12 +228,12 @@ async function start() {
 }
 
 app.get('/', async function (req, res) {
-    const result = await start()
+    const result = await exports.start()
     res.render('index', {id: result.id, block_num: result.block_num, error: null})
 })
 
 
-async function update(req) {
+exports.update = async function (req) {
     if (req.body.block_num) {
         const block_num = req.body.block_num
         //console.log(block_num)
@@ -258,12 +258,12 @@ async function update(req) {
         return result
     }
     else {
-        return start()
+        return exports.start()
     }
 }
 
 app.post('/', async function (req, res) {
-    const result = await update(req)
+    const result = await exports.update(req)
     res.render('index', {id: result.id, block_num: result.block_num, error: null})
 
 })
@@ -272,4 +272,4 @@ app.listen(HTTP_PORT, HOST, function () {
     console.log('Web server listening on port ' + HTTP_PORT)
 })
 
-//module.exports(exports)
+module.exports = exports
