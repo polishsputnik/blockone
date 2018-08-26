@@ -1,3 +1,7 @@
+exports = {}
+
+
+
 const express = require('express')
 const server = express()
 const GRAPHQL_PORT = 4000
@@ -45,6 +49,8 @@ async function get_latest_block_num() {
 async function insert_block(block) {
     const client = await pool.connect()
 
+    hash =0 //figure out what to get here
+
     insert_block_query = "INSERT INTO block (" +
         "block_num, " +
         "timestamp, " +
@@ -53,7 +59,10 @@ async function insert_block(block) {
         "action_mroot, " +
         "block_mroot, " +
         "id, " +
-        "ref_block_prefix) " +
+        "ref_block_prefix, " +
+        "input_transactions," +
+        "producer_signature, " +
+        "hash) " +
         "VALUES ('" +
         block.block_num + "', '" +
         block.timestamp + "', '" +
@@ -62,8 +71,11 @@ async function insert_block(block) {
         block.action_mroot + "', '" +
         block.block_mroot + "', '" +
         block.id + "', '" +
-        block.ref_block_prefix + "') ON CONFLICT DO NOTHING;"
-    //console.log(insert_block_query)
+        block.ref_block_prefix + "'," +
+        block.input_transactions.length + ", '" +
+        block.producer_signature + "', '" +
+        hash + "') ON CONFLICT DO NOTHING;"
+    console.log(insert_block_query)
     try {
         await client.query('BEGIN')
         try {
@@ -84,6 +96,8 @@ async function load_block_by_num(block_num) {
     //console.log(block_response)
     await insert_block(block_response)
 
+    console.log(block_response)
+
     return block_response
 }
 
@@ -93,16 +107,11 @@ async function load_block_by_id(id) {
     //console.log(block_response)
     await insert_block(block_response)
 
+    console.log(block_response)
+
     return block_response
 }
 
-
-async function start() {
-    let block_num = await get_latest_block_num()
-    let block_response = await load_block_by_num(block_num)
-}
-
-start()
 
 
 express_graphql = require('express-graphql');
@@ -121,7 +130,10 @@ schema = buildSchema(`
         action_mroot: String,
         block_mroot: String,
         id: String,
-        ref_block_prefix: String
+        ref_block_prefix: String,
+        input_transactions: Int,
+        producer_signature: String,
+        hash: String
     }
 `)
 
@@ -166,7 +178,10 @@ get_block = async function(args) {
             action_mroot: row.action_mroot,
             block_mroot: row.block_mroot,
             id: row.id,
-            ref_block_prefix: row.ref_block_prefix
+            ref_block_prefix: row.ref_block_prefix,
+            input_transactions: row.input_transactions,
+            producer_signature: row.producer_signature,
+            hash: row.hash
         }
     }
     else {
@@ -202,41 +217,51 @@ app.set('view engine', 'ejs')
 const bodyParser = require('body-parser');
 app.use(bodyParser.urlencoded({ extended: true }));
 
-app.get('/', async function (req, res) {
+async function start() {
     block_num = await get_latest_block_num()
     block = await load_block_by_num(block_num)
-    let id = await block.id
+    return block.id
+}
+
+app.get('/', async function (req, res) {
+    id = await start()
     res.render('index', {id: id, block_num: block_num, error: null})
 })
 
-app.post('/', async function (req, res) {
+async function update(req) {
     if (req.body.block_num) {
-        let block_num = req.body.block_num
+        block_num = req.body.block_num
         //console.log(block_num)
         block = await load_block_by_num(block_num)
-        let id = await block.id
+        id = await block.id
         //console.log(id)
-        res.render('index', {id: id, block_num: block_num, error: null})
     }
     else if (req.body.id) {
-        let id = req.body.id
+        id = req.body.id
         //console.log(block_num)
-        block = await load_block_by_id(id)
+        block = await oad_block_by_id(id)
 
-        let block_num = await block.block_num
+        block_num = await block.block_num
         //console.log(id)
-        res.render('index', {id: id, block_num: block_num, error: null})
     }
     else {
         block_num = await get_latest_block_num()
         block = await load_block_by_num(block_num)
-        let id = await block.id
-        res.render('index', {id: id, block_num: block_num, error: null})
+        id = await block.id
     }
+    result = {block_num: block_num,
+            id: id}
+    return result
+}
+
+app.post('/', async function (req, res) {
+    result = await update(req)
+    res.render('index', {id: result.id, block_num: result.block_num, error: null})
 
 })
 
 app.listen(HTTP_PORT, HOST, function () {
-    console.log('Example app listening on port 3000!')
+    console.log('Web server listening on port 3000!')
 })
 
+module.exports(exports)

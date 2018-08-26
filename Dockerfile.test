@@ -1,0 +1,10 @@
+FROM polishsputnik/block_one
+
+COPY test test
+
+
+RUN npm update && npm install -g mocha
+
+
+# Override the command, to run the test instead of the application
+CMD ["mocha", "test/test.js", "--reporter", "spec"]
