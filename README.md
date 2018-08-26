@@ -22,6 +22,6 @@ Or:
   }
 }
 
-Hash currently returns 0 for all blocks.
+Hash currently returns 0 for all blocks because there doesn't seem to be a mechanism for getting the hash of the created block. :(
 
 Unit test writing currently in progress.

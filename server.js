@@ -189,10 +189,10 @@ get_block = async function(args) {
     }
     else {
         if (args.block_num) {
-            return load_block_by_num(block_num)
+            return load_block_by_num(args.block_num)
         }
         else if (args.id) {
-            return load_block_by_id(id)
+            return load_block_by_id(args.id)
         }
     }
 }
