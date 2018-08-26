@@ -1,27 +1,39 @@
 const express = require('express')
 const server = express()
-const PORT = 3000
-const pg = require('pg')
+const GRAPHQL_PORT = 4000
+const HTTP_PORT = 3000
+const HOST ='0.0.0.0'
 
-var config = {
+const pg = require('pg')
+db_config = {
     user: 'postgres',
-    database: 'blockone',
+    database: 'block_one',
     password: 'password',
-    host: 'localhost', // Server hosting the postgres database
+    host: process.env.DATABASE_HOST, // Server hosting the postgres database
     port: 5432, // env var: PGPORT
     max: 10, // max number of clients in the pool
     idleTimeoutMillis: 30000 // how long a client is allowed to remain idle before being closed
 }
-
-const pool = new pg.Pool(config)
+const pool = new pg.Pool(db_config)
 
 Eos = require('eosjs')
 // Private key or keys (array) provided statically or by way of a function.
 // For multiple keys, the get_required_keys API is used (more on that below).
-keyProvider= '5KQwrPbwdL6PhXujxW37FSSQZ1JiwsST4cqQzDeyXtP79zkvFD3'
+eos_config = {
 
+    chainId: null, // 32 byte (64 char) hex string
+    keyProvider: '5KQwrPbwdL6PhXujxW37FSSQZ1JiwsST4cqQzDeyXtP79zkvFD3', // WIF string or array of keys..
+    httpEndpoint: 'http://' + process.env.EOS_HOST + ':8888',
+    expireInSeconds: 60,
+    broadcast: true,
+    verbose: false, // API activity
+    sign: true
+}
 // Localhost Testnet (run ./docker/up.sh)
-eos = Eos({keyProvider})
+eos = Eos(eos_config)
+
+
+
 
 async function get_latest_block_num() {
     let info = await eos.getInfo({})
@@ -30,14 +42,10 @@ async function get_latest_block_num() {
     return block_num
 }
 
-async function load_block(block_num) {
-
-    let block_response = await eos.getBlock(block_num)
-    //console.log(block_response)
-
+async function insert_block(block) {
     const client = await pool.connect()
 
-    insert_block_query = "INSERT INTO blocks (" +
+    insert_block_query = "INSERT INTO block (" +
         "block_num, " +
         "timestamp, " +
         "previous, " +
@@ -47,16 +55,15 @@ async function load_block(block_num) {
         "id, " +
         "ref_block_prefix) " +
         "VALUES ('" +
-        block_response.block_num + "', '" +
-        block_response.timestamp + "', '" +
-        block_response.previous + "', '" +
-        block_response.transaction_mroot + "', '" +
-        block_response.action_mroot + "', '" +
-        block_response.block_mroot + "', '" +
-        block_response.id + "', '" +
-        block_response.ref_block_prefix + "') ON CONFLICT DO NOTHING;"
+        block.block_num + "', '" +
+        block.timestamp + "', '" +
+        block.previous + "', '" +
+        block.transaction_mroot + "', '" +
+        block.action_mroot + "', '" +
+        block.block_mroot + "', '" +
+        block.id + "', '" +
+        block.ref_block_prefix + "') ON CONFLICT DO NOTHING;"
     //console.log(insert_block_query)
-    let res
     try {
         await client.query('BEGIN')
         try {
@@ -69,53 +76,34 @@ async function load_block(block_num) {
     } finally {
         client.release()
     }
+}
+
+async function load_block_by_num(block_num) {
+
+    let block_response = await eos.getBlock(block_num)
+    //console.log(block_response)
+    await insert_block(block_response)
+
     return block_response
 }
 
-async function start() {
-    let block_num = await get_latest_block_num()
-    let block_response = await load_block(block_num)
+async function load_block_by_id(id) {
+
+    let block_response = await eos.getBlock(id)
+    //console.log(block_response)
+    await insert_block(block_response)
+
+    return block_response
 }
 
+
+async function start() {
+    let block_num = await get_latest_block_num()
+    let block_response = await load_block_by_num(block_num)
+}
 
 start()
 
-async function get_block(id) {
-
-    const client = await pool.connect()
-
-    block_query = "SELECT * FROM blocks WHERE id = '" + id + "';"
-    //console.log(insert_block_query)
-    let res
-    try {
-        await client.query('BEGIN')
-        try {
-            res = await client.query(block_query)
-            await client.query('COMMIT')
-        } catch (err) {
-            await client.query('ROLLBACK')
-            throw err
-        }
-    } finally {
-        client.release()
-    }
-
-    if (res.rows.length > 0) {
-        row = res.rows[0]
-        //console.log(row)
-        result = {
-            block_num: row.block_num,
-            timestamp: row.timestamp,
-            previous: row.previous,
-            transaction_mroot: row.transaction_mroot,
-            action_mroot: row.action_mroot,
-            block_mroot: row.block_mroot,
-            id: row.id,
-            ref_block_prefix: row.ref_block_prefix
-        }
-    }
-    return result
-}
 
 express_graphql = require('express-graphql');
 var { buildSchema } = require('graphql');
@@ -141,12 +129,12 @@ get_block = async function(args) {
     if (args.block_num) {
         block_num = args.block_num
         console.log(block_num)
-        block_query = "SELECT * FROM blocks WHERE block_num = " + block_num + ";"
+        block_query = "SELECT * FROM block WHERE block_num = " + block_num + ";"
     }
     else if (args.id) {
         id = args.id
         console.log(id)
-        block_query = "SELECT * FROM blocks WHERE id = '" + id + "';"
+        block_query = "SELECT * FROM block WHERE id = '" + id + "';"
     }
 
     const client = await pool.connect()
@@ -183,10 +171,10 @@ get_block = async function(args) {
     }
     else {
         if (args.block_num) {
-            result = load_block(block_num)
+            result = load_block_by_num(block_num)
         }
         else if (args.id) {
-            result = null
+            result = load_block_by_id(id)
         }
     }
 
@@ -208,7 +196,7 @@ app.use('/graphql', express_graphql({
     rootValue: root,
     graphiql: true
 }))
-app.listen(4000, () => console.log('Express GraphQL Server Now Running On localhost:4000/graphql'))
+app.listen(GRAPHQL_PORT, HOST, () => console.log('Express GraphQL Server Now Running On localhost:4000/graphql'))
 
 app.set('view engine', 'ejs')
 const bodyParser = require('body-parser');
@@ -216,7 +204,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 app.get('/', async function (req, res) {
     block_num = await get_latest_block_num()
-    block = await load_block(block_num)
+    block = await load_block_by_num(block_num)
     let id = await block.id
     res.render('index', {id: id, block_num: block_num, error: null})
 })
@@ -225,7 +213,7 @@ app.post('/', async function (req, res) {
     if (req.body.block_num) {
         let block_num = req.body.block_num
         //console.log(block_num)
-        block = await load_block(block_num)
+        block = await load_block_by_num(block_num)
         let id = await block.id
         //console.log(id)
         res.render('index', {id: id, block_num: block_num, error: null})
@@ -233,7 +221,7 @@ app.post('/', async function (req, res) {
     else if (req.body.id) {
         let id = req.body.id
         //console.log(block_num)
-        block = await get_block(id)
+        block = await load_block_by_id(id)
 
         let block_num = await block.block_num
         //console.log(id)
@@ -241,14 +229,14 @@ app.post('/', async function (req, res) {
     }
     else {
         block_num = await get_latest_block_num()
-        block = await load_block(block_num)
+        block = await load_block_by_num(block_num)
         let id = await block.id
         res.render('index', {id: id, block_num: block_num, error: null})
     }
 
 })
 
-app.listen(3000, function () {
+app.listen(HTTP_PORT, HOST, function () {
     console.log('Example app listening on port 3000!')
 })
 
